@@ -36,18 +36,20 @@ coreutils.pkg-path = "coreutils"
 [hook]
 on-activate = '''
 
-export FLOX_PYTHON_UV_CACHE_DIR="$FLOX_ENV_CACHE/python-uv"
-mkdir -p "$FLOX_PYTHON_UV_CACHE_DIR"
+export FLOX_VENV_CACHE_DIR="$FLOX_ENV_CACHE/$(basename "$PWD")"
+mkdir -p "$FLOX_VENV_CACHE_DIR"
 
-export FLOX_PYTHON_UV_VENV_PATH="$FLOX_PYTHON_UV_CACHE_DIR/venv"
-export FLOX_PYTHON_UV_VENV_INTERPRETER="$(cat "$FLOX_PYTHON_UV_CACHE_DIR/venv.interpreter" 2> /dev/null || echo false )"
-export FLOX_PYTHON_UV_INTERPRETER="$(realpath $(which python3))"
+export FLOX_VENV_PATH="$FLOX_VENV_CACHE_DIR/venv"
+export FLOX_VENV_INTERPRETER_PATH="$(cat "$FLOX_VENV_CACHE_DIR/venv.interpreter" 2> /dev/null || echo false )"
+export FLOX_VENV_PYTHON_VERSION="$(cat "$FLOX_VENV_CACHE_DIR/venv.version" 2> /dev/null || echo false )"
+export FLOX_PYTHON_INTERPRETER="$(realpath $(which python3))"
+export FLOX_PYTHON_VERSION="$(python3 --version)"
 
 # Make sure any tools are not attempting to use the Python interpreter from any
 # existing virtual environment.
 unset VIRTUAL_ENV
 
-export UV_PROJECT_ENVIRONMENT="$FLOX_PYTHON_UV_VENV_PATH"
+export UV_PROJECT_ENVIRONMENT="$FLOX_VENV_PATH"
 
 function indent() {
   echo -e '{{ Foreground "#cccccc" " │ "}}' | \
@@ -71,13 +73,16 @@ function with_spinner() {
 }
 
 function ensure_venv() {
-  uv venv -p "$FLOX_PYTHON_UV_INTERPRETER" "$FLOX_PYTHON_UV_VENV_PATH"
-  source "$FLOX_PYTHON_UV_VENV_PATH/bin/activate"
+  uv venv -p "$FLOX_PYTHON_INTERPRETER" "$FLOX_VENV_PATH"
+  echo "$FLOX_PYTHON_INTERPRETER" > "$FLOX_VENV_CACHE_DIR/venv.interpreter"
+  echo "$FLOX_PYTHON_VERSION" > "$FLOX_VENV_CACHE_DIR/venv.version"
+  source "$FLOX_VENV_PATH/bin/activate"
 }
 export -f ensure_venv
 
 function install_packages() {
   uv sync
+  touch "$FLOX_VENV_CACHE_DIR/venv.packages"
 }
 export -f install_packages
 
@@ -86,25 +91,23 @@ export -f install_packages
 indent && echo
 indent && echo
 
-if [ "$FLOX_PYTHON_UV_VENV_INTERPRETER" != "$FLOX_PYTHON_UV_INTERPRETER" ]; then
+if [ "$FLOX_VENV_INTERPRETER_PATH" != "$FLOX_PYTHON_INTERPRETER" ] || [ "$FLOX_VENV_PYTHON_VERSION" != "$FLOX_PYTHON_VERSION" ]; then
   with_spinner ensure_venv "Creating virtual environment"
+  with_spinner install_packages "Installing Python packages"
   indent && echo -e "{{ Foreground \"#ffffff\" \"✅ Virtual environment was created.\" }}\n" \
+    | gum format -t template
+elif [ pyproject.toml -nt "$FLOX_VENV_CACHE_DIR/venv.packages" ]; then
+  with_spinner install_packages "Installing Python packages"
+  indent && echo -e "{{ Foreground \"#ffffff\" \"✅ Python packages installed.\" }}\n" \
     | gum format -t template
 else
   indent && echo -e "{{ Foreground \"#ffffff\" \"✅ Virtual environment already exists.\" }}\n" \
     | gum format -t template
 fi
 
-indent && echo
 
-if [ -f pyproject.toml ]; then
-  with_spinner install_packages "Installing Python packages"
-  indent && echo -e "{{ Foreground \"#ffffff\" \"✅ Python packages installed.\" }}\n" \
-    | gum format -t template
-else
-  indent && echo -e "{{ Foreground \"#ffffff\" \"✅ No need to install Python packages.\" }}\n" \
-    | gum format -t template
-fi
+
+
 
 indent && echo
 
@@ -123,16 +126,16 @@ indent && echo
 # '''
 ## Shell-specific customizations such as setting aliases go here:
 bash = '''
-source "$FLOX_PYTHON_UV_VENV_PATH/bin/activate"
+source "$FLOX_VENV_PATH/bin/activate"
 '''
 fish = '''
-source "$FLOX_PYTHON_UV_VENV_PATH/bin/activate.fish"
+source "$FLOX_VENV_PATH/bin/activate.fish"
 '''
 tcsh = '''
-source "$FLOX_PYTHON_UV_VENV_PATH/bin/activate.csh"
+source "$FLOX_VENV_PATH/bin/activate.csh"
 '''
 zsh = '''
-source "$FLOX_PYTHON_UV_VENV_PATH/bin/activate"
+source "$FLOX_VENV_PATH/bin/activate"
 '''
 
 ## Services ---------------------------------------------------------
